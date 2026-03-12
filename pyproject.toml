@@ -1,0 +1,14 @@
+[project]
+name = "mcp_gamma"
+version = "0.1.0"
+description = "Gamma MCP server in Python using FastMCP"
+requires-python = ">=3.10"
+dependencies = [
+  "fastmcp",
+  "httpx",
+  "python-dotenv",
+]
+
+[project.scripts]
+mcp-gamma = "server:main"
+
