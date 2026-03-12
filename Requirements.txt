@@ -2,6 +2,3 @@ fastmcp
 httpx
 python-dotenv
 uvicorn
-fastmcp
-httpx
-uvicorn
