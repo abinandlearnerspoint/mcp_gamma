@@ -703,27 +703,97 @@ async def extract_ppt_text(file_path: str) -> str:
     Returns:
         Slide-by-slide content.
     """
+    import glob
+    import tempfile
 
     try:
-        prs = Presentation(file_path)
+        # ── Try 1: Direct path as given ──────────────────────────────────
+        candidates = [
+            file_path,
 
-        slides = []
+            # ── Try 2: Claude Desktop temp upload locations ───────────────
+            os.path.join(tempfile.gettempdir(), file_path),
+            os.path.join(tempfile.gettempdir(), os.path.basename(file_path)),
+
+            # ── Try 3: Common Claude Desktop upload folders ───────────────
+            os.path.join(os.path.expanduser("~"), "Downloads", os.path.basename(file_path)),
+            os.path.join(os.path.expanduser("~"), "Desktop",   os.path.basename(file_path)),
+            os.path.join(os.path.expanduser("~"), os.path.basename(file_path)),
+
+            # ── Try 4: Claude Desktop specific temp dirs (macOS/Windows) ──
+            os.path.join(os.path.expanduser("~"), "Library", "Application Support",
+                         "Claude", os.path.basename(file_path)),
+            os.path.join(os.getenv("APPDATA", ""), "Claude", os.path.basename(file_path)),
+            os.path.join(os.getenv("LOCALAPPDATA", ""), "Claude", os.path.basename(file_path)),
+        ]
+
+        # ── Try 5: Wildcard search in temp dir ────────────────────────────
+        basename = os.path.basename(file_path)
+        wildcard_matches = glob.glob(
+            os.path.join(tempfile.gettempdir(), "**", basename), recursive=True
+        )
+        candidates.extend(wildcard_matches)
+
+        # ── Find the first valid path ─────────────────────────────────────
+        resolved_path = None
+        for candidate in candidates:
+            if candidate and os.path.exists(candidate):
+                resolved_path = candidate
+                print(f"✅ Found file at: {resolved_path}", flush=True)
+                break
+
+        if not resolved_path:
+            return (
+                f"❌ Could not find file: '{file_path}'\n\n"
+                f"📋 Searched locations:\n" +
+                "\n".join(f"   • {c}" for c in candidates if c) +
+                f"\n\n💡 Please provide the full absolute path to the file."
+            )
+
+        # ── Parse PPTX ────────────────────────────────────────────────────
+        prs = Presentation(resolved_path)
+
+        if len(prs.slides) == 0:
+            return "⚠️ The presentation contains no slides."
+
+        slides_output = []
 
         for i, slide in enumerate(prs.slides, start=1):
             text_items = []
 
             for shape in slide.shapes:
-                if hasattr(shape, "text"):
-                    txt = shape.text.strip()
-                    if txt:
-                        text_items.append(txt)
+                if hasattr(shape, "text_frame"):
+                    for para in shape.text_frame.paragraphs:
+                        line = " ".join(
+                            run.text for run in para.runs if run.text.strip()
+                        ).strip()
+                        if line:
+                            text_items.append(line)
 
-            slides.append(f"Slide {i}:\n" + "\n".join(text_items))
+                if shape.shape_type == 19:  # Table
+                    for row in shape.table.rows:
+                        row_text = " | ".join(
+                            cell.text.strip()
+                            for cell in row.cells
+                            if cell.text.strip()
+                        )
+                        if row_text:
+                            text_items.append(f"[Table] {row_text}")
 
-        return "\n\n".join(slides)
+            slide_text = "\n".join(text_items) if text_items else "(No text on this slide)"
+            slides_output.append(f"── Slide {i} ──\n{slide_text}")
+
+        total  = len(prs.slides)
+        header = (
+            f"📊 File   : {os.path.basename(resolved_path)}\n"
+            f"📑 Slides : {total}\n"
+            f"{'=' * 45}\n\n"
+        )
+        return header + "\n\n".join(slides_output)
 
     except Exception as e:
-        return f"❌ Failed to extract PPT text: {e}"
+        return f"❌ Failed to extract PPT text: {type(e).__name__}: {e}"
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # MAIN
