@@ -11,6 +11,7 @@ import asyncio
 import httpx
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+from pptx import Presentation
 
 load_dotenv()
 
@@ -689,6 +690,40 @@ async def test_connection() -> str:
     print(output, flush=True)
     return output
 
+
+
+@mcp.tool()
+async def extract_ppt_text(file_path: str) -> str:
+    """
+    Extract text from a PowerPoint file slide-by-slide.
+
+    Args:
+        file_path: Path to PPTX file
+
+    Returns:
+        Slide-by-slide content.
+    """
+
+    try:
+        prs = Presentation(file_path)
+
+        slides = []
+
+        for i, slide in enumerate(prs.slides, start=1):
+            text_items = []
+
+            for shape in slide.shapes:
+                if hasattr(shape, "text"):
+                    txt = shape.text.strip()
+                    if txt:
+                        text_items.append(txt)
+
+            slides.append(f"Slide {i}:\n" + "\n".join(text_items))
+
+        return "\n\n".join(slides)
+
+    except Exception as e:
+        return f"❌ Failed to extract PPT text: {e}"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # MAIN
